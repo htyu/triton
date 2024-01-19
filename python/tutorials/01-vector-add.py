@@ -29,6 +29,7 @@ def add_kernel(x_ptr,  # *Pointer* to first input vector.
                y_ptr,  # *Pointer* to second input vector.
                output_ptr,  # *Pointer* to output vector.
                n_elements,  # Size of the vector.
+               stride: tl.constexpr,  # Number of elements each program should process.
                BLOCK_SIZE: tl.constexpr,  # Number of elements each program should process.
                # NOTE: `constexpr` so it can be used as a shape value.
                ):
@@ -40,16 +41,17 @@ def add_kernel(x_ptr,  # *Pointer* to first input vector.
     # would each access the elements [0:64, 64:128, 128:192, 192:256].
     # Note that offsets is a list of pointers:
     block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    # Create a mask to guard memory operations against out-of-bounds accesses.
-    mask = offsets < n_elements
-    # Load x and y from DRAM, masking out any extra elements in case the input is not a
-    # multiple of the block size.
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
-    output = x + y
-    # Write x + y back to DRAM.
-    tl.store(output_ptr + offsets, output, mask=mask)
+    for offset in range(0, BLOCK_SIZE, stride):
+        offsets = block_start + offset + tl.arange(0, stride)
+        # Create a mask to guard memory operations against out-of-bounds accesses.
+        mask = offsets < n_elements
+        # Load x and y from DRAM, masking out any extra elements in case the input is not a
+        # multiple of the block size.
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
+        output = x + y
+        # Write x + y back to DRAM.
+        tl.store(output_ptr + offsets, output, mask=mask)
 
 
 # %%
@@ -70,7 +72,11 @@ def add(x: torch.Tensor, y: torch.Tensor):
     #  - Each torch.tensor object is implicitly converted into a pointer to its first element.
     #  - `triton.jit`'ed functions can be indexed with a launch grid to obtain a callable GPU kernel.
     #  - Don't forget to pass meta-parameters as keywords arguments.
-    add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
+    kernel_info = add_kernel[grid](x, y, output, n_elements, stride=256, BLOCK_SIZE=1024)
+    for ir in ["ttir", "ttgir", "llir", "ptx"]:
+        with open(f"{ir}.txt", "w") as f:
+            f.write(kernel_info.asm[ir])
+
     # We return a handle to z but, since `torch.cuda.synchronize()` hasn't been called, the kernel is still
     # running asynchronously at this point.
     return output

@@ -22,7 +22,7 @@ namespace ttng = mlir::triton::nvidia_gpu;
 // schedules.
 
 /// Replace the yield with a new one with the given operands appended.
-static void appendToYield(scf::ForOp forOp, ArrayRef<Value> newOperands) {
+void appendToYield(scf::ForOp forOp, ArrayRef<Value> newOperands) {
   // Fix up the yield op.
   Operation *yieldOp = forOp.getBody()->getTerminator();
   SmallVector<Value> operands(yieldOp->getOperands().begin(),
@@ -47,15 +47,14 @@ static void createAsyncCopy(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
 
   // Extract part.
   auto allocType = alloc.getType().cast<RankedTensorType>();
-  RankedTensorType sliceType = RankedTensorType::get(
-      {allocType.getShape()[1], allocType.getShape()[2]},
-      allocType.getElementType(), allocType.getEncoding());
+  RankedTensorType sliceType = RankedTensorType::get({allocType.getShape()[1]},
+                                                     allocType.getElementType(),
+                                                     allocType.getEncoding());
   auto extract = builder.create<ttg::ExtractSliceOp>(
       loc, sliceType, insertOp.getResult(),
-      SmallVector<OpFoldResult>{extractIdx, int_attr(0), int_attr(0)},
-      SmallVector<OpFoldResult>{int_attr(1), int_attr(sliceType.getShape()[0]),
-                                int_attr(sliceType.getShape()[1])},
-      SmallVector<OpFoldResult>{int_attr(1), int_attr(1), int_attr(1)});
+      SmallVector<OpFoldResult>{extractIdx, int_attr(0)},
+      SmallVector<OpFoldResult>{int_attr(1), int_attr(sliceType.getShape()[0])},
+      SmallVector<OpFoldResult>{int_attr(1), int_attr(1)});
   auto newCvt = builder.create<ttg::ConvertLayoutOp>(
       loadOp->getLoc(), loadOp.getType(), extract.getResult());
   loadOp->replaceAllUsesWith(newCvt->getResults());
@@ -133,8 +132,8 @@ static void createTMALoad(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
 }
 
 /// Create an async load equivalent to the given load.
-static void createAsyncLoad(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
-                            Value insertIdx, Value extractIdx, Value phase) {
+void createAsyncLoad(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
+                     Value insertIdx, Value extractIdx, Value phase) {
   if (isLoadFromTensorPtr(loadOp)) {
     createTMALoad(forOp, loadOp, alloc, insertIdx, extractIdx, phase);
   } else {
@@ -434,8 +433,7 @@ static Value getPredMask(RewriterBase &rewriter, Type typeLike,
 }
 
 // Function to mask operations during scheduling.
-static Operation *predicateOp(RewriterBase &rewriter, Operation *op,
-                              Value pred) {
+Operation *predicateOp(RewriterBase &rewriter, Operation *op, Value pred) {
   OpBuilder::InsertionGuard guard(rewriter);
   if (mlir::isMemoryEffectFree(op))
     return op;
@@ -481,9 +479,9 @@ static Operation *predicateOp(RewriterBase &rewriter, Operation *op,
   return op;
 }
 
-static void setWaitNum(Operation *op,
-                       mlir::triton::PipeliningOption::PipelinerPart part,
-                       unsigned iteration, unsigned numLoadsInStage) {
+void setWaitNum(Operation *op,
+                mlir::triton::PipeliningOption::PipelinerPart part,
+                unsigned iteration, unsigned numLoadsInStage) {
   if (auto waitOp = dyn_cast<ttg::AsyncWaitOp>(op)) {
     waitOp.setNum(numLoadsInStage);
   }
@@ -533,7 +531,7 @@ static void addOps(scf::ForOp forOp, int stage,
 
 // create the schedule for a matmul loop. This is ad hoc based on how we know
 // matmul loops should be pipelined and is not a generic scheduler.
-static std::vector<std::pair<Operation *, unsigned>>
+std::vector<std::pair<Operation *, unsigned>>
 createSchedule(scf::ForOp forOp, int numStages, bool prefetchExtract) {
   SmallVector<Operation *> insertOps;
   SmallVector<Operation *> extractOps;

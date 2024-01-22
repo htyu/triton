@@ -1227,9 +1227,10 @@ void init_triton_ir(py::module &&m) {
               mlir::triton::CacheModifier cacheModifier,
               mlir::triton::EvictionPolicy evictionPolicy,
               bool isVolatile) -> mlir::Value {
-             return self.create<mlir::triton::LoadOp>(
+             auto load = self.create<mlir::triton::LoadOp>(
                  ptr, boundaryCheck, paddingOption, cacheModifier,
                  evictionPolicy, isVolatile);
+             return load.getResult();
            })
       .def("create_tensor_pointer_store",
            [](TritonOpBuilder &self, mlir::Value &ptr, mlir::Value &val,
@@ -1529,10 +1530,11 @@ void init_triton_ir(py::module &&m) {
               std::vector<mlir::Value> &shape,
               std::vector<mlir::Value> &strides,
               std::vector<mlir::Value> &offsets,
-              std::vector<int32_t> &tensorShape,
-              std::vector<int32_t> &order) -> mlir::Value {
+              std::vector<int32_t> &tensorShape, std::vector<int32_t> &order,
+              bool is_tensor_layout) -> mlir::Value {
              return self.create<mlir::triton::MakeTensorPtrOp>(
-                 base, shape, strides, offsets, tensorShape, order);
+                 base, shape, strides, offsets, tensorShape, order,
+                 is_tensor_layout);
            })
       // Advance a block pointer
       .def("create_advance",

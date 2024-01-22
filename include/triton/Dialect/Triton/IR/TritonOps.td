@@ -170,7 +170,7 @@ def TT_LoadOp : TT_Op<"load",
     let arguments = (ins AnyTypeOf<[TT_PtrLike, TT_TensorPtr]>:$ptr, Optional<TT_BoolLike>:$mask,
                          Optional<TT_Type>:$other, OptionalAttr<DenseI32ArrayAttr>:$boundaryCheck,
                          OptionalAttr<TT_PaddingOptionAttr>:$padding, TT_CacheModifierAttr:$cache,
-                         TT_EvictionPolicyAttr:$evict, BoolAttr:$isVolatile);
+                         TT_EvictionPolicyAttr:$evict, BoolAttr:$isVolatile, OptionalAttr<BoolAttr>:$isTensorLayout);
 
     let results = (outs TT_Type:$result);
 
@@ -192,7 +192,7 @@ def TT_LoadOp : TT_Op<"load",
         OpBuilder<(ins "Value":$ptr, "Value":$mask, "Value":$other,
                        "std::optional<ArrayRef<int32_t>>":$boundaryCheck,
                        "std::optional<triton::PaddingOption>":$padding, "triton::CacheModifier":$cache,
-                       "triton::EvictionPolicy":$evict, "bool":$isVolatile)>
+                       "triton::EvictionPolicy":$evict, "bool":$isVolatile, "std::optional<bool>":$isTensorLayout)>
     ];
 
     // Format: `tt.load operands attrs : optional(type(ptr)) -> type(result)`
@@ -643,14 +643,15 @@ def TT_MakeTensorPtrOp : TT_Op<"make_tensor_ptr",
     Variadic<I64>:$shape,
     Variadic<I64>:$strides,
     Variadic<I32>:$offsets,
-    DenseI32ArrayAttr:$order
+    DenseI32ArrayAttr:$order,
+    BoolAttr:$is_tensor_layout
   );
 
   let results = (outs TT_TensorPtr:$result);
 
   // TODO(Keren): define a custom assembly format for this op because the result type cannot be printed correctly
   // Add additional `[]` to increase readability and split variadic lists
-  let assemblyFormat = "$base `,` `[` $shape `]` `,` `[` $strides `]` `,` `[` $offsets `]` attr-dict `:` type($result)";
+  let assemblyFormat = "$base `,` `[` $shape `]` `,` `[` $strides `]` `,` `[` $offsets `]``,``[` $is_tensor_layout `]`  attr-dict `:` type($result)";
 
   let builders = [
     OpBuilder<(ins
@@ -659,7 +660,8 @@ def TT_MakeTensorPtrOp : TT_Op<"make_tensor_ptr",
         "ValueRange":$strides,
         "ValueRange":$offsets,
         "ArrayRef<int32_t>":$tensorShape,
-        "ArrayRef<int32_t>":$order
+        "ArrayRef<int32_t>":$order,
+        "bool":$is_tensor_layout
     )>
   ];
 }

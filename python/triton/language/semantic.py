@@ -1573,7 +1573,8 @@ def _convert_to_ir_values(builder, list_like, require_i64=True):
     return [_convert_elem_to_ir_value(builder, list_like, require_i64)]
 
 
-def make_block_ptr(base: tl.tensor, shape, strides, offsets, block_shape, order, builder: ir.builder) -> tl.tensor:
+def make_block_ptr(base: tl.tensor, shape, strides, offsets, block_shape, order, is_tensor_layout,
+                   builder: ir.builder) -> tl.tensor:
     # Convert dynamic arguments to IR values
     # NOTES(Chenggang): current `shape/strides` are `int64_t`, while `offsets/block_shape` are `int32_t`
     shape = _convert_to_ir_values(builder, shape)
@@ -1608,7 +1609,7 @@ def make_block_ptr(base: tl.tensor, shape, strides, offsets, block_shape, order,
     # Build value, the type is:
     #   `pointer_type<blocked<shape, element_type>>` in Python
     #   `tt.ptr<tensor<shape, element_type>>` in MLIR
-    handle = builder.create_make_block_ptr(base.handle, shape, strides, offsets, block_shape, order)
+    handle = builder.create_make_block_ptr(base.handle, shape, strides, offsets, block_shape, order, is_tensor_layout)
     return tl.tensor(handle, tl.pointer_type(tl.block_type(base.type.element_ty, block_shape)))
 
 

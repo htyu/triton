@@ -154,10 +154,10 @@ def matmul_kernel_with_block_pointers(
     # See above `Make a Block Pointer` section for details.
     a_block_ptr = tl.make_block_ptr(base=a_ptr, shape=(M, K), strides=(stride_am, stride_ak),
                                     offsets=(pid_m * BLOCK_SIZE_M, 0), block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_K),
-                                    order=(1, 0))
+                                    order=(1, 0), is_tensor_layout=True)
     b_block_ptr = tl.make_block_ptr(base=b_ptr, shape=(K, N), strides=(stride_bk, stride_bn),
                                     offsets=(0, pid_n * BLOCK_SIZE_N), block_shape=(BLOCK_SIZE_K, BLOCK_SIZE_N),
-                                    order=(1, 0))
+                                    order=(1, 0), is_tensor_layout=True)
 
     # -----------------------------------------------------------
     # Iterate to compute a block of the C matrix.
@@ -203,12 +203,15 @@ def matmul(a, b):
     c = torch.empty((M, N), device=a.device, dtype=a.dtype)
     # 1D launch kernel where each block gets its own program.
     grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )
-    matmul_kernel_with_block_pointers[grid](
+    kernel_info = matmul_kernel_with_block_pointers[grid](
         a, b, c,  #
         M, N, K,  #
         a.stride(0), a.stride(1),  #
         b.stride(0), b.stride(1),  #
         c.stride(0), c.stride(1))
+    for ir in ["ttir", "ttgir", "llir", "ptx"]:
+        with open(f"{ir}.txt", "w") as f:
+            f.write(kernel_info.asm[ir])
     return c
 
 

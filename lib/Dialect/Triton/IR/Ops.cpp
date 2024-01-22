@@ -172,7 +172,8 @@ void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
                    ::mlir::Value ptr, ::mlir::triton::CacheModifier cache,
                    ::mlir::triton::EvictionPolicy evict, bool isVolatile) {
   LoadOp::build(builder, state, ptr, /*mask=*/{}, /*other=*/{},
-                /*boundaryCheck=*/{}, /*padding=*/{}, cache, evict, isVolatile);
+                /*boundaryCheck=*/{}, /*padding=*/{}, cache, evict, isVolatile,
+                {});
 }
 
 void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
@@ -181,7 +182,7 @@ void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
                    ::mlir::triton::CacheModifier cache,
                    ::mlir::triton::EvictionPolicy evict, bool isVolatile) {
   LoadOp::build(builder, state, ptr, /*mask=*/{}, /*other=*/{}, boundaryCheck,
-                padding, cache, evict, isVolatile);
+                padding, cache, evict, isVolatile, {});
 }
 
 void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
@@ -189,7 +190,7 @@ void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
                    ::mlir::triton::CacheModifier cache,
                    ::mlir::triton::EvictionPolicy evict, bool isVolatile) {
   LoadOp::build(builder, state, ptr, mask, /*other=*/{}, /*boundaryCheck=*/{},
-                /*padding=*/{}, cache, evict, isVolatile);
+                /*padding=*/{}, cache, evict, isVolatile, {});
 }
 
 void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
@@ -197,7 +198,7 @@ void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
                    ::mlir::triton::CacheModifier cache,
                    ::mlir::triton::EvictionPolicy evict, bool isVolatile) {
   LoadOp::build(builder, state, ptr, mask, other, /*boundaryCheck=*/{},
-                /*padding=*/{}, cache, evict, isVolatile);
+                /*padding=*/{}, cache, evict, isVolatile, {});
 }
 
 void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
@@ -205,13 +206,23 @@ void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
                    std::optional<ArrayRef<int32_t>> boundaryCheck,
                    std::optional<::mlir::triton::PaddingOption> padding,
                    ::mlir::triton::CacheModifier cache,
-                   ::mlir::triton::EvictionPolicy evict, bool isVolatile) {
+                   ::mlir::triton::EvictionPolicy evict, bool isVolatile,
+                   std::optional<bool> isTensorLayout) {
   // Operands
   state.addOperands(ptr);
   if (mask) {
     state.addOperands(mask);
     if (other) {
       state.addOperands(other);
+    }
+  }
+
+  if (auto definingOp = ptr.getDefiningOp()) {
+    if (auto makeTensorPtr =
+            llvm::dyn_cast<triton::MakeTensorPtrOp>(definingOp)) {
+      if (makeTensorPtr.getIsTensorLayout())
+        state.addAttribute(getIsTensorLayoutAttrName(state.name),
+                           builder.getBoolAttr(true));
     }
   }
 
@@ -270,7 +281,8 @@ struct CanonicalizeMaskedLoadPattern
       rewriter.replaceOpWithNewOp<triton::LoadOp>(
           loadOp, loadOp.getType(), loadOp.getPtr(), Value(), Value(),
           loadOp.getBoundaryCheckAttr(), loadOp.getPaddingAttr(),
-          loadOp.getCache(), loadOp.getEvict(), loadOp.getIsVolatile());
+          loadOp.getCache(), loadOp.getEvict(), loadOp.getIsVolatile(),
+          loadOp.getIsTensorLayoutAttr());
     } else {
       // mask = splat(0)
 
@@ -830,7 +842,7 @@ void MakeTensorPtrOp::build(::mlir::OpBuilder &builder,
                             ::mlir::ValueRange strides,
                             ::mlir::ValueRange offsets,
                             ArrayRef<int32_t> tensorShape,
-                            ArrayRef<int32_t> order) {
+                            ArrayRef<int32_t> order, bool is_tensor_layout) {
   // Get pointer type from `base`
   auto pointerType = base.getType().cast<PointerType>();
   assert(pointerType != nullptr);
@@ -842,7 +854,7 @@ void MakeTensorPtrOp::build(::mlir::OpBuilder &builder,
   auto result = PointerType::get(tensorType, 1);
 
   return build(builder, state, result, base, shape, strides, offsets,
-               builder.getDenseI32ArrayAttr(order));
+               builder.getDenseI32ArrayAttr(order), is_tensor_layout);
 }
 
 // The following ops, including `call`, `func`, and `return` are copied and

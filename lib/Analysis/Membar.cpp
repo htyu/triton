@@ -15,6 +15,7 @@
 namespace mlir {
 
 void MembarAnalysis::run(FuncBlockInfoMapT &funcBlockInfoMap) {
+  return;
   FunctionOpInterface funcOp =
       dyn_cast<FunctionOpInterface>(allocation->getOperation());
   OpBuilder builder(funcOp.getContext());

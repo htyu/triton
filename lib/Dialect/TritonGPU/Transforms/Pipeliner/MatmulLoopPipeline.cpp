@@ -43,7 +43,6 @@ static void createAsyncCopy(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
       loc, alloc.getType(), loadOp.getPtr(), alloc, insertIdx, loadOp.getMask(),
       loadOp.getOther(), loadOp.getCache(), loadOp.getEvict(),
       loadOp.getIsVolatile(), /*axis*/ 0);
-  auto commmit = builder.create<ttg::AsyncCommitGroupOp>(loc);
 
   // Extract part.
   auto allocType = alloc.getType().cast<RankedTensorType>();

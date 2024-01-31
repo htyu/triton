@@ -26,9 +26,9 @@ from triton.runtime import driver
 
 @triton.autotune(
     configs=[
+        #triton.Config({}, num_stages=2, num_warps=1),
         triton.Config({}, num_stages=2, num_warps=4),
-        triton.Config({}, num_stages=4, num_warps=4),
-        triton.Config({}, num_stages=8, num_warps=4),
+        #triton.Config({}, num_stages=8, num_warps=4),
     ],
     key=[],
 )
@@ -55,9 +55,9 @@ def add(x: torch.Tensor, y: torch.Tensor):
     output = torch.empty_like(x)
     assert x.is_cuda and y.is_cuda and output.is_cuda
     n_elements = output.numel()
-    num_sm = 132*2
+    num_sm = 132*2*4
     grid = lambda meta: (num_sm, )
-    BLOCK_SIZE = triton.next_power_of_2(n_elements // num_sm)
+    BLOCK_SIZE = n_elements // num_sm
     kernel_info = add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=BLOCK_SIZE, stride=1024)
     # for ir in ["ttir", "ttgir", "llir", "ptx"]:
     #     with open(f"{ir}.txt", "w") as f:

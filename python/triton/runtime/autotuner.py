@@ -117,6 +117,7 @@ class Autotuner(KernelInterface):
                 num_stages=config.num_stages,
                 num_ctas=config.num_ctas,
                 enable_warp_specialization=config.enable_warp_specialization,
+                matrix_instr_nonkdim=config.matrix_instr_nonkdim,
                 # enable_persistent=False,
                 **current,
             )
@@ -169,6 +170,7 @@ class Autotuner(KernelInterface):
             num_stages=config.num_stages,
             num_ctas=config.num_ctas,
             enable_warp_specialization=config.enable_warp_specialization,
+            matrix_instr_nonkdim=config.matrix_instr_nonkdim,
             **kwargs,
             **config.kwargs,
         )
@@ -211,6 +213,7 @@ class Autotuner(KernelInterface):
                 num_stages=config.num_stages,
                 enable_warp_specialization=config.enable_warp_specialization,
                 enable_persistent=config.enable_persistent,
+                matrix_instr_nonkdim=config.matrix_instr_nonkdim,
                 **kwargs,
                 **config.kwargs,
             )
@@ -235,7 +238,7 @@ class Config:
                     function are args.
     """
 
-    def __init__(self, kwargs, num_warps=4, num_stages=2, num_ctas=1, enable_warp_specialization=False, pre_hook=None):
+    def __init__(self, kwargs, num_warps=4, num_stages=2, num_ctas=1, enable_warp_specialization=False, pre_hook=None, matrix_instr_nonkdim=0):
         self.kwargs = kwargs
         self.num_warps = num_warps
         self.num_ctas = num_ctas
@@ -244,6 +247,7 @@ class Config:
         # TODO[shuhaoj]: May make enable_persistent configurable in future if necessary.
         self.enable_persistent = False
         self.pre_hook = pre_hook
+        self.matrix_instr_nonkdim = matrix_instr_nonkdim
 
     def __str__(self):
         res = []
@@ -253,6 +257,7 @@ class Config:
         ## Comment out Hopper specific parameters
         #res.append(f'num_ctas: {self.num_ctas}')
         res.append(f'num_stages: {self.num_stages}')
+        res.append(f'matrix_instr_nonkdim: {self.matrix_instr_nonkdim}')
         #res.append(f'enable_warp_specialization: {self.enable_warp_specialization}')
         #res.append(f'enable_persistent: {self.enable_persistent}')
         return ', '.join(res)

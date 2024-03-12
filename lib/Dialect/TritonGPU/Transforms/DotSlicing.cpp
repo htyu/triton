@@ -127,7 +127,7 @@ struct TritonAMDGPUDotSlicingPass
     ttg::ViewSliceOp viewPtr;
     for (auto i = 0; i < firstOpToSlice->getOperands().size(); i++) {
       auto arg = firstOpToSlice->getOperand(i);
-      if (auto tensorType = arg.getType().cast<RankedTensorType>()) {
+      if (auto tensorType = arg.getType().dyn_cast<RankedTensorType>()) {
         auto slice = builder.create<ttg::ViewSliceOp>(
             dotOp.getLoc(),
             RankedTensorType::get(sliceSizes, tensorType.getElementType(),

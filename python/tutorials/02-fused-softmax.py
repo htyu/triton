@@ -26,6 +26,7 @@ import torch
 import triton
 import triton.language as tl
 from triton.runtime import driver
+import triton.compiler as tc
 
 
 @torch.jit.script
@@ -103,12 +104,30 @@ def softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_stride, n
 # We can create a helper function that enqueues the kernel and its (meta-)arguments for any given input tensor.
 
 device = torch.cuda.current_device()
-NUM_SM = driver.active.utils.get_device_properties(device)["multiprocessor_count"]
+properties = driver.active.utils.get_device_properties(device)
+NUM_SM = properties["multiprocessor_count"]
+NUM_REGS = properties["max_num_regs"]
+WARP_SIZE = properties["warp_size"]
+target = triton.runtime.driver.active.get_current_target()
+BLOCK_SIZE = triton.next_power_of_2(128 * 100)
+num_warps = 8
+num_stages = 4
+
+opts = {"num_warps": 8, "num_stages": 4}
+src = tc.ASTSource(
+    fn=softmax_kernel,
+    constants={"BLOCK_SIZE": BLOCK_SIZE, "num_stages": num_stages},
+    signature="*fp32,*fp32,i32,i32,i32,i32",
+)
+kernel = triton.compile(src=src, target=target, options=opts)
+kernel._init_handles()
+n_regs = kernel.n_regs
+occupancy = NUM_REGS // (n_regs * WARP_SIZE * num_warps)
+num_programs = NUM_SM * occupancy
 
 
 def softmax(x):
     n_rows, n_cols = x.shape
-    num_programs = NUM_SM
 
     # Create a number of persistent programs as many as SMs.
     grid = lambda meta: (num_programs, )

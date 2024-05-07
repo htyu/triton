@@ -200,13 +200,16 @@ def mangle_type(arg, is_const=False):
 class KernelInterface(Generic[T]):
     run: T
 
-    def __getitem__(self, grid) -> T:
+    def __getitem__(self, index) -> T:
         """
         A JIT function is launched with: fn[grid](*args, **kwargs).
         Hence JITFunction.__getitem__ returns a callable proxy that
         memorizes the grid.
         """
-        return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+        grid = index[0]
+        if len(index) > 1:
+            compile_only = index[1]
+        return lambda *args, **kwargs: self.run(grid=grid, compile_only=compile_only, warmup=False, *args, **kwargs)
         # return cast(T, functools.partial(cast(Callable, self.run), grid=grid))
 
 
@@ -466,7 +469,7 @@ class JITFunction(KernelInterface[T]):
             i for (i, p) in enumerate(self.params) if (not p.do_not_specialize) and (not p.is_constexpr)
         ]
 
-    def run(self, *args, grid, warmup, **kwargs):
+    def jit(self, *args, **kwargs):
         # parse options
         device = driver.active.get_current_device()
         stream = driver.active.get_current_stream(device)
@@ -530,6 +533,12 @@ class JITFunction(KernelInterface[T]):
             )
             self.cache[device][key] = kernel
 
+        return kernel
+
+    def run(self, *args, grid, compile_only, warmup, **kwargs):
+        kernel = self.jit(*args, **kwargs)
+        if compile_only:
+            return kernel
         if not warmup:
             # canonicalize grid
             assert grid is not None

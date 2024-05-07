@@ -26,7 +26,6 @@ import torch
 import triton
 import triton.language as tl
 from triton.runtime import driver
-import triton.compiler as tc
 
 
 @torch.jit.script
@@ -109,28 +108,16 @@ NUM_SM = properties["multiprocessor_count"]
 NUM_REGS = properties["max_num_regs"]
 WARP_SIZE = properties["warp_size"]
 target = triton.runtime.driver.active.get_current_target()
-BLOCK_SIZE = triton.next_power_of_2(128 * 100)
 num_warps = 8
 num_stages = 4
 
 opts = {"num_warps": 8, "num_stages": 4}
-src = tc.ASTSource(
-    fn=softmax_kernel,
-    constants={"BLOCK_SIZE": BLOCK_SIZE, "num_stages": num_stages},
-    signature="*fp32,*fp32,i32,i32,i32,i32",
-)
-kernel = triton.compile(src=src, target=target, options=opts)
-kernel._init_handles()
-n_regs = kernel.n_regs
-occupancy = NUM_REGS // (n_regs * WARP_SIZE * num_warps)
-num_programs = NUM_SM * occupancy
+
+kernel_cache = {}
 
 
 def softmax(x):
     n_rows, n_cols = x.shape
-
-    # Create a number of persistent programs as many as SMs.
-    grid = lambda meta: (num_programs, )
 
     # The block size of each loop iteration is the smallest power of two greater than the number of columns in `x`
     BLOCK_SIZE = triton.next_power_of_2(n_cols)
@@ -143,12 +130,11 @@ def softmax(x):
 
     # Number of software piepling stages.
     num_stages = 4
+
     # Allocate output
     y = torch.empty_like(x)
 
-    # Enqueue kernel. The 1D launch grid is simple: we have one kernel instance per chunk of rows of
-    # the input matrix
-    softmax_kernel[grid](
+    kernel = softmax_kernel[(n_rows, True)](
         y,
         x,
         x.stride(0),
@@ -158,6 +144,25 @@ def softmax(x):
         num_warps=num_warps,
         BLOCK_SIZE=BLOCK_SIZE,
         num_stages=num_stages,
+    )
+
+    kernel._init_handles()
+    n_regs = kernel.n_regs
+    occupancy = NUM_REGS // (n_regs * WARP_SIZE * num_warps)
+    num_programs = NUM_SM * occupancy
+
+    # Create a number of persistent programs as many as SMs.
+    # grid = lambda meta: (num_programs, )
+
+    # Enqueue kernel. The 1D launch grid is simple: we have one kernel instance per chunk of rows of
+    # the input matrix
+    kernel[(num_programs, 1, 1)](
+        y,
+        x,
+        x.stride(0),
+        y.stride(0),
+        n_rows,
+        n_cols,
     )
     return y
 

@@ -205,17 +205,7 @@ bool isLayoutAnchor(Operation *op) {
 
 void LayoutPropagation::initAnchorLayout() {
   auto maybeAddAnchor = [&](Value v) {
-    if (auto tensorType = v.getType().dyn_cast<RankedTensorType>()) {
-      // Workaround, don't popagate MMA layout unless there is a convert
-      // back to mma further down to avoid generating reduction with MMA
-      // layout that may have lower performance.
-      // This can be improved with more aggressive backward propagation.
-      if (tensorType.getEncoding().isa<NvidiaMmaEncodingAttr>() &&
-          v.getDefiningOp() &&
-          !hasConvertToMMATransisitiveUse(v.getDefiningOp(),
-                                          tensorType.getEncoding())) {
-        return;
-      }
+    if (auto tensorType = dyn_cast<RankedTensorType>(v.getType())) {
       layouts.insert({v, LayoutInfo(tensorType.getEncoding())});
     }
   };

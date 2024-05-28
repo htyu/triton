@@ -86,12 +86,12 @@ void createMBarrierArrive(llvm::IRBuilderBase &builder,
             .getCallee());
     builder.CreateCall(func, {barrier, pred});
   } else if (arriveType == mlir::triton::nvgpu::MBarriveType::cp_async) {
-    argTys.push_back(pred->getType());
+    // argTys.push_back(pred->getType());
     auto *func = dyn_cast<llvm::Function>(
         getExternalFuncOP(module, "__nv_mbarrier_arrive_cp_async", retTy,
                           argTys)
             .getCallee());
-    builder.CreateCall(func, {barrier, pred});
+    builder.CreateCall(func, {barrier});
   } else if (arriveType == mlir::triton::nvgpu::MBarriveType::expect_tx) {
     assert(txCount > 0 && "txCount should be valid");
     argTys.push_back(builder.getInt32Ty());

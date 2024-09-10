@@ -52,6 +52,42 @@ def NVGPU_WGMMAWaitGroupOp : NVGPU_Op<"wgmma_wait_group",
   let assemblyFormat = "$input attr-dict `:` type($input)";
 }
 
+def NVGPU_MBarrierInitOp : NVGPU_Op<"mbarrier_init", [MemoryEffects<[MemWrite]>]> {
+  let arguments = (ins LLVM_PointerShared:$mbarrier, I1:$pred, I32Attr:$count);
+  let assemblyFormat = "$mbarrier `,` $pred attr-dict `:` type($mbarrier)";
+}
+
+def MBarrier_ArriveTypeAttr : I32EnumAttr<"MBarriveType",
+    "mbarrier arrive type, either 'normal', 'expect_tx', 'cp_async'",
+    [
+      I32EnumAttrCase<"normal", 0>,
+      I32EnumAttrCase<"cp_async", 1>,
+      I32EnumAttrCase<"expect_tx", 2>,
+      I32EnumAttrCase<"remote", 3>,
+    ]>{
+  let cppNamespace = "::mlir::triton::nvgpu";
+}
+
+def NVGPU_MBarrierArriveOp : NVGPU_Op<"mbarrier_arrive", []> {
+  let arguments = (ins LLVM_PointerShared:$mbarrier, I1:$pred, Optional<I32>:$ctaId, MBarrier_ArriveTypeAttr:$arriveType, DefaultValuedAttr<I32Attr, "0">:$txCount);
+  let assemblyFormat = "$mbarrier `,` $pred (`,` $ctaId^)? attr-dict `:` type($mbarrier)";
+}
+
+def NVGPU_MBarrierWaitOp : NVGPU_Op<"mbarrier_wait", []> {
+  let arguments = (ins LLVM_PointerShared:$mbarrier, I1:$phase);
+  let assemblyFormat = "$mbarrier `,` $phase attr-dict `:` type(operands)";
+}
+
+def NVGPU_NamedBarrierArriveOp : NVGPU_Op<"bar_arrive", []> {
+  let arguments = (ins I32:$bar, I32:$numThreads);
+  let assemblyFormat = "$bar `,` $numThreads attr-dict `:` type(operands)";
+}
+
+def NVGPU_NamedBarrierWaitOp : NVGPU_Op<"bar_wait", []> {
+  let arguments = (ins I32:$bar, I32:$numThreads);
+  let assemblyFormat = "$bar `,` $numThreads attr-dict `:` type(operands)";
+}
+
 def WGMMA_LayoutAttr : I32EnumAttr<"WGMMALayout",
     "wgmma layout, either 'row' or 'col'",
     [
@@ -110,6 +146,21 @@ def NVGPU_StoreMatrixOp : NVGPU_Op<"stmatrix", [MemoryEffects<[MemWrite]>]> {
 def NVGPU_ClusterCTAIdOp : NVGPU_Op<"cluster_id", [Pure]> {
   let results = (outs I32:$result);
   let assemblyFormat = "attr-dict";
+}
+
+def NVGPU_CanonicalWarpIdOp : NVGPU_Op<"canonical_warp_id", [Pure]> {
+  let results = (outs I32:$result);
+  let assemblyFormat = "attr-dict";
+}
+
+def NVGPU_RegAllocOp : NVGPU_Op<"reg_alloc", []> {
+  let arguments = (ins I32Attr: $regCount);
+  let assemblyFormat = "operands attr-dict `:` type(operands)";
+}
+
+def NVGPU_RegDeallocOp : NVGPU_Op<"reg_dealloc", []> {
+  let arguments = (ins I32Attr: $regCount);
+  let assemblyFormat = "operands attr-dict `:` type(operands)";
 }
 
 #endif

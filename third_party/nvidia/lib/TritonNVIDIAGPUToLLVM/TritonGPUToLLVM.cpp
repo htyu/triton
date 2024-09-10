@@ -95,6 +95,13 @@ struct ConvertTritonGPUToLLVM
     int numCTAs = triton::gpu::TritonGPUDialect::getNumCTAs(mod);
     int threadsPerWarp = triton::gpu::TritonGPUDialect::getThreadsPerWarp(mod);
 
+    // Hack: WSMaterialization may have changed the effective number of warps,
+    // in a way that isn't reflected in triton_gpu.num-warps.  If so, we have to
+    // respect that here.
+    if (Attribute attr = mod->getAttr("triton_gpu.num-warp-groups-per-cta")) {
+      numWarps *= mlir::cast<IntegerAttr>(attr).getInt();
+    }
+
     // Allocate shared memory and set barrier
     ModuleAllocation allocation(mod);
     ModuleMembarAnalysis membarPass(&allocation);
@@ -148,6 +155,7 @@ struct ConvertTritonGPUToLLVM
     populateBarrierOpToLLVMPatterns(typeConverter, patterns, benefit);
     populateTensorPtrOpsToLLVMPatterns(typeConverter, patterns, benefit);
     populateClusterOpsToLLVMPatterns(typeConverter, patterns, benefit);
+    populateRegReallocOpToLLVMPatterns(typeConverter, patterns, benefit);
     mlir::triton::populateHistogramOpToLLVMPatterns(typeConverter, patterns,
                                                     targetInfo, benefit);
     mlir::triton::populatePrintOpToLLVMPattern(typeConverter, patterns,

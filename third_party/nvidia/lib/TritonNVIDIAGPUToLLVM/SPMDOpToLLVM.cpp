@@ -1,5 +1,6 @@
 #include "PatternTritonGPUOpToLLVM.h"
 #include "Utility.h"
+#include "triton/Dialect/TritonNvidiaGPU/Transforms/Utility.h"
 
 namespace {
 
@@ -33,10 +34,22 @@ struct GetNumProgramsOpConversion
   }
 };
 
+struct GetCanonicalWarpIdConversion
+    : public ConvertOpToLLVMPattern<triton::nvidia_gpu::GetCanonicalWarpId> {
+  using ConvertOpToLLVMPattern<
+      triton::nvidia_gpu::GetCanonicalWarpId>::ConvertOpToLLVMPattern;
+  LogicalResult
+  matchAndRewrite(triton::nvidia_gpu::GetCanonicalWarpId op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, GetCanonicalWarpId(rewriter, op->getLoc()));
+    return success();
+  }
+};
 } // namespace
 
 void mlir::triton::NVIDIA::populateSPMDOpToLLVMPattern(
     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
     PatternBenefit benefit) {
   patterns.add<GetNumProgramsOpConversion>(typeConverter, benefit);
+  patterns.add<GetCanonicalWarpIdConversion>(typeConverter, benefit);
 }

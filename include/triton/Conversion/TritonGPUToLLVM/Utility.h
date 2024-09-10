@@ -388,10 +388,22 @@ inline Value getSharedMemoryBase(Location loc, RewriterBase &rewriter,
 
 /* ------------------------------------ */
 // Returns CTA level thread idx
-inline Value getThreadId(RewriterBase &rewriter, Location loc) {
+inline Value getThreadIdInCTA(RewriterBase &rewriter, Location loc) {
   Value tid =
       rewriter.create<::mlir::gpu::ThreadIdOp>(loc, ::mlir::gpu::Dimension::x);
   return rewriter.create<arith::IndexCastOp>(loc, i32_ty, tid);
+}
+
+// Returns CTA level thread idx for not ws mode.
+// Returns agent level thread idx for ws mode.
+static Value getThreadId(RewriterBase &rewriter, Location loc) {
+  Value tid = getThreadIdInCTA(rewriter, loc);
+  auto mod = rewriter.getBlock()->getParent()->getParentOfType<ModuleOp>();
+  if (triton::nvidia_gpu::TritonNvidiaGPUDialect::getWSSupportedAttr(mod)) {
+    Value _128 = rewriter.create<arith::ConstantIntOp>(loc, 128, 32);
+    tid = rewriter.create<arith::RemSIOp>(loc, tid, _128);
+  }
+  return tid;
 }
 
 // -----------------------------------------------------------------------

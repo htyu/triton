@@ -195,6 +195,14 @@ private:
                                                              alignment);
       }
     }
+    if (isa<triton::nvidia_gpu::AllocMBarrierOp>(op)) {
+      Value result = op->getResult(0);
+      size_t kAlignment = 8;
+      if (!isa<RankedTensorType>(result.getType()))
+        // In case AllocMBarrierOp is allocating scalar mbarriers
+        allocation->addBuffer<BufferT::BufferKind::Explicit>(result, 8,
+                                                             kAlignment);
+    }
   }
 
   template <BufferT::BufferKind T>
@@ -403,6 +411,13 @@ private:
     // Analyze liveness of explicit buffers
     Liveness liveness(operation);
     auto getValueLivenessRange = [&](Value value) {
+      // TODO(Keren): Investigate mbarrier and figure out how to clean this up
+      // Shared memory allocated by mbarrier cannot be reused
+      if (value.getDefiningOp() &&
+          isa<triton::nvidia_gpu::AllocMBarrierOp>(value.getDefiningOp()))
+        return Interval(std::numeric_limits<size_t>::min(),
+                        std::numeric_limits<size_t>::max());
+
       auto liveOperations = liveness.resolveLiveness(value);
       auto minId = std::numeric_limits<size_t>::max();
       auto maxId = std::numeric_limits<size_t>::min();

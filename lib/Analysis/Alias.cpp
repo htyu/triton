@@ -38,7 +38,8 @@ LogicalResult SharedMemoryAliasAnalysis::visitOperation(
   if (isa<triton::gpu::LocalAllocOp>(op)) {
     aliasInfo.insert(result);
     pessimistic = false;
-  } else if (isa<triton::gpu::MemDescSubviewOp, triton::TransOp>(op)) {
+  } else if (isa<triton::gpu::MemDescSubviewOp, triton::TransOp,
+                 triton::nvidia_gpu::ExtractMBarrierOp>(op)) {
     // extract_slice %src
     // trans %src
     aliasInfo = AliasInfo(operands[0]->getValue());

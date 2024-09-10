@@ -6,6 +6,7 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "triton/Dialect/TritonNvidiaGPU/Transforms/Utility.h"
 #include <deque>
 
 namespace mlir {
@@ -95,6 +96,18 @@ void MembarAnalysis::visitTerminator(Operation *op,
 void MembarAnalysis::insertBarrier(Operation *op, OpBuilder *builder) {
   OpBuilder::InsertionGuard g(*builder);
   auto barrierOp = builder->create<gpu::BarrierOp>(op->getLoc());
+  if (auto optionalAgentId = getWSAgentId(op)) {
+    int agentId = *optionalAgentId, roleId = 0;
+    if (auto optionalRoleId = getWSRoleId(op))
+      roleId = *optionalRoleId;
+    int barId = agentId + roleId + nameBarrierIdBegin;
+    assert(barId < nameBarrierIdEnd);
+    // TODO[shuhaoj]: Change hard code style of numThreads. Hide async_agent
+    // attr.
+    const int numThreads = 128;
+    barrierOp->setAttr("bar_id", builder->getI64IntegerAttr(barId));
+    barrierOp->setAttr("num_threads", builder->getI64IntegerAttr(numThreads));
+  }
 }
 
 void MembarAnalysis::update(Operation *op, BlockInfo *blockInfo,

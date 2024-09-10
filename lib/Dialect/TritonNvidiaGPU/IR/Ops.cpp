@@ -81,6 +81,29 @@ LogicalResult WarpGroupDotWaitOp::inferReturnTypes(
   return mlir::success();
 }
 
+///--- Async related ops ---
+void GetAgentIdOp::build(::mlir::OpBuilder &builder,
+                         ::mlir::OperationState &state) {
+  build(builder, state, builder.getI32Type());
+}
+
+void CreateTokenOp::build(::mlir::OpBuilder &builder,
+                          ::mlir::OperationState &state, uint32_t num) {
+  auto tokenType = TokenType::get(builder.getContext());
+  auto resultType = RankedTensorType::get({num}, tokenType);
+  build(builder, state, resultType, num);
+}
+
+void GetMutexRoleIdOp::build(::mlir::OpBuilder &builder,
+                             ::mlir::OperationState &state, uint32_t num) {
+  build(builder, state, builder.getI32Type(), num);
+}
+
+void CreateMutexOp::build(::mlir::OpBuilder &builder,
+                          ::mlir::OperationState &state) {
+  build(builder, state, MutexType::get(builder.getContext()));
+}
+
 static LogicalResult verifyBarrierType(Operation *op, MemDescType barrierType) {
   if (!barrierType.getElementType().isInteger(64) ||
       barrierType.getShape() != ArrayRef<int64_t>({1}))

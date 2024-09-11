@@ -247,7 +247,7 @@ bool hasConvertToMMATransisitiveUse(Operation *op, Attribute encoding) {
 bool isLayoutAnchor(Operation *op) {
   if (isa<LoadOp, StoreOp>(op))
     return isExpensiveLoadOrStore(op);
-  if (isa<DotOp, nvidia_gpu::WarpGroupDotOp, AtomicRMWOp, AtomicCASOp>(op))
+  if (isa<DotOp, nvidia_gpu::WarpGroupDotOp, AtomicCASOp>(op))
     return true;
 
   // Heuristic: Mark permuting reshape as a layout anchor.  Its dst can be
@@ -406,8 +406,7 @@ void LayoutPropagation::resolveConflicts() {
     // Hacky resolve, prefer block encoding.
     // TODO: add a proper heuristic.
     Attribute encoding = *info.encodings.begin();
-    bool isLoadOrStore =
-        op && isa<LoadOp, StoreOp, AtomicRMWOp, AtomicCASOp>(op);
+    bool isLoadOrStore = op && isa<LoadOp, StoreOp, AtomicCASOp>(op);
     for (Attribute e : info.encodings) {
       if ((isLoadOrStore && isa<BlockedEncodingAttr>(e)) ||
           (!isLoadOrStore && isa<MmaEncodingTrait>(e))) {

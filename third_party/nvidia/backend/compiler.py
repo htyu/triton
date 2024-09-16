@@ -88,6 +88,7 @@ class CUDAOptions:
     num_warps: int = 4
     num_ctas: int = 1
     num_stages: int = 3
+    num_buffers_warp_spec: int = 2
     # maxnreg corresponds to the ptx parameter .maxnreg, which controls the
     # maximum number of 32-bit registers used by one thread.
     maxnreg: Optional[int] = None
@@ -219,6 +220,7 @@ class CUDABackend(BaseBackend):
         passes.common.add_cse(pm)
         if capability // 10 >= 8:
             passes.ttgpuir.add_combine_tensor_select_and_if(pm)
+            passes.ttgpuir.add_warp_spec_experimental(pm, opt.num_buffers_warp_spec)
             passes.ttgpuir.add_pipeline(pm, opt.num_stages)
         passes.ttgpuir.add_prefetch(pm)
         passes.ttgpuir.add_optimize_dot_operands(pm, capability >= 80)

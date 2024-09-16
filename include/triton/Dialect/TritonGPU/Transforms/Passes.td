@@ -169,4 +169,17 @@ def TritonGPUCombineTensorSelectAndIf: Pass<"tritongpu-combine-tensor-select-and
                            "mlir::triton::TritonDialect"];
 }
 
+def TritonGPUWarpSpecExperimental: Pass<"tritongpu-warp-spec-experimental", "mlir::ModuleOp"> {
+  let summary = "TritonGPU experiemental warp specialization";
+
+  let description = "This pass generates warp specialized code baed on warp group id attributes.";
+
+  let dependentDialects = ["mlir::triton::gpu::TritonGPUDialect",
+                           "mlir::triton::TritonDialect"];
+  let options = [
+    Option<"numBuffers", "num-buffers",
+           "int32_t", /*default*/"2",
+           "number of buffering for producer-consumer">
+  ];
+}
 #endif

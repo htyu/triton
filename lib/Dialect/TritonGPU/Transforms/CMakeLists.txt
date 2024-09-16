@@ -17,6 +17,7 @@ add_triton_library(TritonGPUTransforms
   RemoveLayoutConversions.cpp
   ReorderInstructions.cpp
   Utility.cpp
+  WarpSpecExperimental.cpp
 
   DEPENDS
   TritonGPUTransformsIncGen

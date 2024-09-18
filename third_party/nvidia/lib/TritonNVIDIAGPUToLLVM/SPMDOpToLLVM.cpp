@@ -35,11 +35,12 @@ struct GetNumProgramsOpConversion
 };
 
 struct GetCanonicalWarpIdConversion
-    : public ConvertOpToLLVMPattern<triton::nvidia_gpu::GetCanonicalWarpId> {
+    : public ConvertOpToLLVMPattern<triton::nvidia_gpu::GetCanonicalWarpIdOp> {
   using ConvertOpToLLVMPattern<
-      triton::nvidia_gpu::GetCanonicalWarpId>::ConvertOpToLLVMPattern;
+      triton::nvidia_gpu::GetCanonicalWarpIdOp>::ConvertOpToLLVMPattern;
   LogicalResult
-  matchAndRewrite(triton::nvidia_gpu::GetCanonicalWarpId op, OpAdaptor adaptor,
+  matchAndRewrite(triton::nvidia_gpu::GetCanonicalWarpIdOp op,
+                  OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, GetCanonicalWarpId(rewriter, op->getLoc()));
     return success();

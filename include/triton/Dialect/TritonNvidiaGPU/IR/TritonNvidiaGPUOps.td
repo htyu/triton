@@ -185,7 +185,7 @@ def TTNG_GetClusterCTAIdOp : TTNG_Op<"get_cluster_cta_id", [Pure]> {
   let assemblyFormat = "attr-dict `:` type($result)";
 }
 
-def TTNG_GetCanonicalWarpId : TTNG_Op<"get_canonical_warp_id", [Pure]> {
+def TTNG_GetCanonicalWarpIdOp : TTNG_Op<"get_canonical_warp_id", [Pure]> {
   let description = [{
     Returns the one dimensional warpId when it's used for producing warp uniform values.
   }];

@@ -1,0 +1,150 @@
+
+[
+    {
+        "children": [
+            {
+                "children": [],
+                "frame": {
+                    "name": "_ZN2at6native18elementwise_kernelILi128ELi4EZNS0_22gpu_kernel_impl_nocastIZNS0_23float8_copy_kernel_cudaERNS_18TensorIteratorBaseEEUlN3c1013Float8_e4m3fnEE_EEvS4_RKT_EUliE_EEviT1_",
+                    "type": "function"
+                },
+                "metrics": {
+                    "Count": 1,
+                    "DeviceId": "0",
+                    "DeviceType": "CUDA",
+                    "Time (ns)": 25312
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "_ZN2at6native29vectorized_elementwise_kernelILi4ENS0_11FillFunctorIN3c1013Float8_e4m3fnEEENS_6detail5ArrayIPcLi1EEEEEviT0_T1_",
+                    "type": "function"
+                },
+                "metrics": {
+                    "Count": 10,
+                    "DeviceId": "0",
+                    "DeviceType": "CUDA",
+                    "Time (ns)": 801270
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "_ZN2at6native29vectorized_elementwise_kernelILi4EZNS0_23float8_copy_kernel_cudaERNS_18TensorIteratorBaseEEUlN3c104HalfEE_NS_6detail5ArrayIPcLi2EEEEEviT0_T1_",
+                    "type": "function"
+                },
+                "metrics": {
+                    "Count": 2,
+                    "DeviceId": "0",
+                    "DeviceType": "CUDA",
+                    "Time (ns)": 13375
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "_ZN2at6native54_GLOBAL__N__bbfa638d_21_DistributionNormal_cu_0c5b6e8543distribution_elementwise_grid_stride_kernelIfLi4EZNS0_9templates4cuda20normal_and_transformIN3c104HalfEfLm4EPNS_17CUDAGeneratorImplEZZZNS4_13normal_kernelIS9_EEvRKNS_10TensorBaseEddT_ENKUlvE_clEvENKUlvE1_clEvEUlfE_EEvRNS_18TensorIteratorBaseET2_T3_EUlP24curandStatePhilox4_32_10E0_ZNS1_27distribution_nullary_kernelIS7_fLi4ES9_SO_SH_EEvSJ_SK_RKSL_T4_EUlifE_EEviNS_15PhiloxCudaStateET1_SK_",
+                    "type": "function"
+                },
+                "metrics": {
+                    "Count": 2,
+                    "DeviceId": "0",
+                    "DeviceType": "CUDA",
+                    "Time (ns)": 25055
+                }
+            },
+            {
+                "children": [
+                    {
+                        "children": [],
+                        "frame": {
+                            "name": "sm90_xmma_gemm_e4m3e4m3_e4m3f32_f32_tn_n_tilesize128x128x128_warpgroupsize1x1x1_bias_f16_execute_segment_k_off_kernel__5x_cublas",
+                            "type": "function"
+                        },
+                        "metrics": {
+                            "Count": 10,
+                            "DeviceId": "0",
+                            "DeviceType": "CUDA",
+                            "Time (ns)": 699960
+                        }
+                    }
+                ],
+                "frame": {
+                    "name": "cublas M=8192, N=8192, K=512",
+                    "type": "function"
+                },
+                "metrics": {
+                    "bytes": 83886080,
+                    "flops8": 687194767360.0
+                }
+            },
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_kernel_tma_persistent [M=8192, N=8192, K=32]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "Count": 10,
+                    "DeviceId": "0",
+                    "DeviceType": "CUDA",
+                    "Time (ns)": 1737133,
+                    "bytes": 5242880,
+                    "flops8": 42949672960.0
+                }
+            }
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_kernel_tma_persistent [M=8192, N=8192, K=64]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "Count": 10,
+                    "DeviceId": "0",
+                    "DeviceType": "CUDA",
+                    "Time (ns)": 1780041,
+                    "bytes": 10485760,
+                    "flops8": 85899345920.0
+                }
+            }
+            {
+                "children": [],
+                "frame": {
+                    "name": "matmul_kernel_tma_persistent [M=8192, N=8192, K=128]",
+                    "type": "function"
+                },
+                "metrics": {
+                    "Count": 10,
+                    "DeviceId": "0",
+                    "DeviceType": "CUDA",
+                    "Time (ns)": 1700139,
+                    "bytes": 20971520,
+                    "flops8": 171798691840.0
+                }
+            }
+        ],
+        "frame": {
+            "name": "ROOT",
+            "type": "function"
+        },
+        "metrics": {
+            "Count": 0,
+            "Time (ns)": 0,
+            "bytes": 0,
+            "flops8": 0
+        }
+    },
+    {
+        "CUDA": {
+            "0": {
+                "arch": "90",
+                "bus_width": 6144,
+                "clock_rate": 1980000,
+                "memory_clock_rate": 1593000,
+                "num_sms": 132
+            }
+        }
+    }
+]

@@ -175,7 +175,8 @@ def TritonGPUWarpSpecExperimental: Pass<"tritongpu-warp-spec-experimental", "mli
   let description = "This pass generates warp specialized code baed on warp group id attributes.";
 
   let dependentDialects = ["mlir::triton::gpu::TritonGPUDialect",
-                           "mlir::triton::TritonDialect"];
+                           "mlir::triton::TritonDialect",
+                           "mlir::triton::nvidia_gpu::TritonNvidiaGPUDialect"];
   let options = [
     Option<"numBuffers", "num-buffers",
            "int32_t", /*default*/"2",

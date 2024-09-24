@@ -24,16 +24,19 @@
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Utility.h"
 #include <unordered_set>
 
-#define DEBUG_TYPE "triton-warp-spec-experimental"
-#define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
-#define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
-
 namespace tt = mlir::triton;
 namespace ttg = mlir::triton::gpu;
 namespace ttng = ::mlir::triton::nvidia_gpu;
 namespace mlir {
 namespace triton {
 namespace gpu {
+
+#define GEN_PASS_DEF_TRITONGPUWARPSPECEXPERIMENTAL
+#include "triton/Dialect/TritonGPU/Transforms/Passes.h.inc"
+
+#define DEBUG_TYPE "tritongpu-warp-spec-experimental"
+#define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
+#define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
 int getWarpGroupId(Operation *op) {
   if (!op->hasAttr("tt.warp_group_id"))
@@ -104,7 +107,7 @@ SmallVector<unsigned> checkDependencyAndCollectUsedArgs(
       assert(depOp && "Unexpected Value with no defining op");
       if (depOp->getBlock() != forOp.getBody())
         continue;
-      // assert(hasWarpGroupId(depOp, warpGroupId) && "Dependency error");
+      assert(hasAgentId(depOp, warpGroupId) && "Dependency error");
       dfs(depOp);
     }
   };
@@ -112,7 +115,7 @@ SmallVector<unsigned> checkDependencyAndCollectUsedArgs(
   // Start from operations that are marked with this warpGroupId explicitly and
   // check dependency with DFS traversal
   forOp.walk([&](Operation *op) {
-    if (hasWarpGroupId(op, warpGroupId) && !isa<scf::YieldOp>(op))
+    if (hasAgentId(op, warpGroupId) && !isa<scf::YieldOp>(op))
       dfs(op);
   });
 
@@ -240,7 +243,7 @@ DenseMap<int, scf::ForOp> createForOpsForEachAgent(scf::ForOp forOp) {
   return warpGroupsToForOp;
 }
 
-DenseMap<int, scf::IfOp> SpecializeRegion(triton::FuncOp funcOp) {
+DenseMap<AgentId, scf::IfOp> SpecializeRegion(triton::FuncOp funcOp) {
   MLIRContext *context = funcOp.getContext();
   OpBuilder builder(context);
   auto loc = funcOp.getLoc();
@@ -254,104 +257,58 @@ DenseMap<int, scf::IfOp> SpecializeRegion(triton::FuncOp funcOp) {
   for (Operation &op : block->getOperations())
     opList.push_back(&op);
 
-  // Get curWarpGroupId
+  // Get curAgentId
   builder.setInsertionPoint(returnOp);
-  Value curWarpGroupId = builder.create<ttng::GetCanonicalWarpIdOp>(loc);
+  Value curAgentId = builder.create<ttng::GetAgentIdOp>(loc);
 
-  // Resources for each warpGroupId
-  DenseMap<int, std::shared_ptr<OpBuilderWithWarpGroupIds>>
-      warpGroupsToBuilders;
-  DenseMap<int, scf::IfOp> warpGroupsToIfOp;
-  DenseMap<int, IRMapping> warpGroupsToIRMappings;
+  // Resources for each agentId
+  DenseMap<AgentId, std::shared_ptr<OpBuilderWithAgentIds>> agentsToBuilders;
+  DenseMap<AgentId, scf::IfOp> agentsToIfOp;
+  DenseMap<AgentId, IRMapping> agentsToIRMappings;
 
-  for (int warpGroupId : getNestedWarpGroupIds(funcOp)) {
-    if (warpGroupId == -1)
-      continue;
-    // Create IfOp for each warpGroupId
+  for (AgentId agentId : getNestedAgentIds(funcOp)) {
+    // Create IfOp for each agentId
     Value cond = builder.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::eq, curWarpGroupId,
-        builder.create<arith::ConstantIntOp>(loc, warpGroupId, 32));
+        loc, arith::CmpIPredicate::eq, curAgentId,
+        builder.create<arith::ConstantIntOp>(loc, agentId, 32));
 
     auto ifOp = builder.create<scf::IfOp>(loc, cond);
-    warpGroupsToIfOp[warpGroupId] = ifOp;
-    setWarpGroupId(context, ifOp, warpGroupId);
+    agentsToIfOp[agentId] = ifOp;
+    setAgentIds(ifOp, {agentId});
 
-    // Create OpBuilderWithWarpGroupIds for each agent
-    auto warpGroupBuilder =
-        std::make_shared<OpBuilderWithWarpGroupIds>(context);
-    warpGroupsToBuilders[warpGroupId] = warpGroupBuilder;
-    warpGroupBuilder->setWarpGroupId(warpGroupId);
+    // Create OpBuilderWithAgentIds for each agent
+    auto agentBuilder = std::make_shared<OpBuilderWithAgentIds>(context);
+    agentsToBuilders[agentId] = agentBuilder;
+    agentBuilder->setAgentIdsFromArray({agentId});
 
     // Set insertion point before yieldOp
     auto yieldOp = ifOp.thenYield();
-    setWarpGroupId(context, yieldOp, warpGroupId);
-    warpGroupBuilder->setInsertionPoint(yieldOp);
+    setAgentIds(yieldOp, {agentId});
+    agentBuilder->setInsertionPoint(yieldOp);
   }
 
   // Clone all operations into corresponding if blocks
   SmallVector<Operation *> cloned;
   for (Operation *op : opList) {
-    auto warpGroupId = getWarpGroupId(op);
-    if (warpGroupId != -1) {
+    auto agentIds = getAgentIds(op);
+    if (!agentIds.empty()) {
       cloned.push_back(op);
-      IRMapping &mapping = warpGroupsToIRMappings[warpGroupId];
-      LLVM_DEBUG({
-        LDBG("clone op ");
-        op->dump();
-      });
-      Operation *newOp = warpGroupsToBuilders[warpGroupId]->clone(*op, mapping);
-      auto newForOp = dyn_cast<scf::ForOp>(newOp);
-      if (newForOp) {
-        for (Operation &opT : newForOp.getBody()->without_terminator()) {
-          LLVM_DEBUG({
-            LDBG("addr " << (&opT) << ": ");
-            opT.dump();
-          });
-        }
+      for (AgentId agentId : getAgentIds(op)) {
+        IRMapping &mapping = agentsToIRMappings[agentId];
+        Operation *newOp = agentsToBuilders[agentId]->clone(*op, mapping);
+        for (unsigned i = 0; i < op->getNumResults(); ++i)
+          mapping.map(op->getResult(i), newOp->getResult(i));
       }
-      for (unsigned i = 0; i < op->getNumResults(); ++i)
-        mapping.map(op->getResult(i), newOp->getResult(i));
     }
   }
 
   // Remove original operations that have been cloned in reverse order
   for (auto it = cloned.rbegin(); it != cloned.rend(); ++it) {
     Operation *op = *it;
-    LLVM_DEBUG({
-      LDBG("erasing op ");
-      op->dump();
-    });
-    auto forOp = dyn_cast<scf::ForOp>(op);
-    if (forOp) {
-      for (Operation &opT : forOp.getBody()->without_terminator()) {
-        LLVM_DEBUG({
-          LDBG("addr " << (&opT) << ": ");
-          opT.dump();
-        });
-      }
-    }
-    {
-      bool hasUse = false;
-      for (unsigned i = 0; i < op->getNumResults(); ++i) {
-        for (Operation *user : op->getResult(i).getUsers()) {
-          hasUse = true;
-          LLVM_DEBUG({
-            LDBG("op has use ");
-            user->dump();
-          });
-        }
-      }
-      if (!hasUse)
-        op->erase();
-    }
+    op->erase();
   }
 
-  LLVM_DEBUG({
-    LDBG("created IfOps:");
-    warpGroupsToIfOp[0]->dump();
-    warpGroupsToIfOp[1]->dump();
-  });
-  return warpGroupsToIfOp;
+  return agentsToIfOp;
 }
 
 struct Channel {
@@ -409,7 +366,6 @@ void collectAsyncChannels(SmallVector<std::unique_ptr<Channel>> &channels,
     for (auto &channel : channels) {
       LDBG("producer op: " << channel->relation.first);
       channel->srcOp->dump();
-      channel->srcOperand.dump();
       LDBG("consumer: " << channel->relation.second);
       channel->dstOp->dump();
     }
@@ -963,35 +919,38 @@ void buildAsyncComm(const DenseMap<Operation *, SmallVector<Channel *>> &map,
         Attribute sharedMemorySpace =
             triton::gpu::SharedMemorySpaceAttr::get(context);
         tt::MemDescType subviewTy = tt::MemDescType::get(
-            sliceType.getShape().drop_front(), sliceType.getElementType(),
+            sliceType.getShape(), sliceType.getElementType(),
             sliceType.getEncoding(), sharedMemorySpace,
             /*mutableMemory=*/true);
-        Value zero =
-            builder.create<arith::ConstantIntOp>(loadOp.getLoc(), 0, 32);
-        Value one =
-            builder.create<arith::ConstantIntOp>(loadOp.getLoc(), 1, 32);
-        SmallVector<Value> copyOffsets(sliceType.getRank(), zero);
+        Value zero = builder.createWithAgentIds<arith::ConstantIntOp>(
+            loadOp.getLoc(), 0, 32);
+        Value one = builder.createWithAgentIds<arith::ConstantIntOp>(
+            loadOp.getLoc(), 1, 32);
+        SmallVector<Value> copyOffsets(sliceType.getRank() + 1, zero);
         copyOffsets[0] = pipelineIdx;
-        auto view = builder.create<ttg::MemDescSubviewOp>(
-            loadOp.getLoc(), subviewTy, buffer, copyOffsets);
-        // Create cp.async
         builder.setAgentIdsFromOp(loadOp);
         builder.setInsertionPointAfter(loadOp);
-        Operation *copy = builder.create<ttg::AsyncCopyGlobalToLocalOp>(
-            loadOp.getLoc(), loadOp.getPtr(), view, loadOp.getMask(),
-            loadOp.getOther(), loadOp.getCache(), loadOp.getEvict(),
-            loadOp.getIsVolatile());
+        auto view = builder.createWithAgentIds<ttg::MemDescSubviewOp>(
+            loadOp.getLoc(), subviewTy, buffer, copyOffsets);
+        // Create cp.async
+        Operation *copy =
+            builder.createWithAgentIds<ttg::AsyncCopyGlobalToLocalOp>(
+                loadOp.getLoc(), loadOp.getPtr(), view, loadOp.getMask(),
+                loadOp.getOther(), loadOp.getCache(), loadOp.getEvict(),
+                loadOp.getIsVolatile());
 
         // Extract part.
         builder.setAgentIdsFromValueUsers(loadResult);
         builder.setInsertionPoint(c->dstOp);
-        SmallVector<Value> loadOffsets(sliceType.getRank(), zero);
+        SmallVector<Value> loadOffsets(sliceType.getRank() + 1, zero);
         loadOffsets[0] = pipelineIdx;
-        auto viewLoad = builder.create<ttg::MemDescSubviewOp>(
+        auto viewLoad = builder.createWithAgentIds<ttg::MemDescSubviewOp>(
             loadOp.getLoc(), subviewTy, buffer, loadOffsets);
-
+        auto sharedLoad = builder.createWithAgentIds<ttg::LocalLoadOp>(
+            loadOp.getLoc(), loadOp.getType(),
+            viewLoad /*,wait->getResult(0)*/);
         // Replace all uses of loadResult
-        loadResult.replaceAllUsesWith(viewLoad.getResult());
+        loadResult.replaceAllUsesWith(sharedLoad.getResult());
         loadOp.erase();
       }
     }
@@ -1001,9 +960,12 @@ void buildAsyncComm(const DenseMap<Operation *, SmallVector<Channel *>> &map,
 DenseMap<AgentId, scf::ForOp> createForOpsForEachAgentId(scf::ForOp forOp) {
   // Collect operation list for each agentId
   DenseMap<AgentId, SmallVector<Operation *>> opList;
-  for (Operation &op : forOp.getBody()->without_terminator())
-    for (AgentId agentId : getAgentIds(&op))
+  for (Operation &op : forOp.getBody()->without_terminator()) {
+    auto ids = getAgentIds(&op);
+    // assert(!ids.empty() && "Operation doesn't have agentId");
+    for (AgentId agentId : ids)
       opList[agentId].push_back(&op);
+  }
 
   // Prepare blockArgToYieldOperand mapping
   DenseMap<BlockArgument, Value> blockArgToYieldOperand;
@@ -1053,11 +1015,24 @@ DenseMap<AgentId, scf::ForOp> createForOpsForEachAgentId(scf::ForOp forOp) {
 
     // Create YieldOp for newForOp
     SmallVector<Value> newYieldOperands;
-    for (unsigned i : usedArgs)
+    for (unsigned i : usedArgs) {
+      LDBG("lookup operand " << i);
       newYieldOperands.push_back(mapping.lookup(yieldOp.getOperand(i)));
-    auto newYieldOp =
-        builder.create<scf::YieldOp>(yieldOp.getLoc(), newYieldOperands);
-    setAgentIds(newYieldOp, {agentId});
+    }
+    bool createNewYield = true;
+    if (newForOp.getBody()->mightHaveTerminator()) {
+      auto initialYield =
+          llvm::cast<scf::YieldOp>(newForOp.getBody()->getTerminator());
+      if (newYieldOperands.size() == 0) {
+        setAgentIds(initialYield, {agentId});
+        createNewYield = false;
+      }
+    }
+    if (createNewYield) {
+      auto newYieldOp =
+          builder.create<scf::YieldOp>(yieldOp.getLoc(), newYieldOperands);
+      setAgentIds(newYieldOp, {agentId});
+    }
 
     // Replace results of forOp with results of newForOp
     for (unsigned i = 0; i < usedArgs.size(); ++i) {
@@ -1074,7 +1049,7 @@ DenseMap<AgentId, scf::ForOp> createForOpsForEachAgentId(scf::ForOp forOp) {
   return agentsToForOp;
 }
 
-DenseMap<AgentId, Operation *> agentDivision(Operation *agentLoop) {
+DenseMap<AgentId, Operation *> agentDivision(Operation *agentMainLoop) {
   // A general agent division in agentLoop could be:
   // *  If opWithRegion has results, e.g. scf.for, this opWithRegion will be
   //    split into several new operations, each agent has one, which
@@ -1086,13 +1061,13 @@ DenseMap<AgentId, Operation *> agentDivision(Operation *agentLoop) {
   // However, current agentLoops are all ForOps and IfOps. So we customize
   // the implementation.
   DenseMap<AgentId, Operation *> agentBackbone;
-  agentLoop->walk([&](Operation *op) {
+  agentMainLoop->walk([&](Operation *op) {
     auto ids = getAgentIds(op);
     if (op->getNumRegions() > 0 && ids.size() > 1) {
       // ForOp: change iterArgs and yield results
       if (auto forOp = dyn_cast<scf::ForOp>(op)) {
         auto forOps = createForOpsForEachAgentId(forOp);
-        if (op == agentLoop) {
+        if (op == agentMainLoop) {
           for (auto kv : forOps) {
             auto f = kv.second;
             auto id = getAgentIds(f.getOperation());
@@ -1111,18 +1086,18 @@ DenseMap<AgentId, Operation *> agentDivision(Operation *agentLoop) {
   return agentBackbone;
 }
 
-void cloneAgentLoopForEachAgentId(SmallVector<Operation *> &agentLoop) {
+void cloneAgentLoopForEachAgentId(SmallVector<Operation *> &agentLoops) {
   SmallVector<Operation *> newBackBone;
 
-  for (Operation *op : agentLoop) {
+  for (Operation *op : agentLoops) {
     auto loc = op->getLoc();
     OpBuilderWithAgentIds builder(op->getContext());
     builder.setInsertionPoint(op);
     // First, agent division
-    DenseMap<AgentId, Operation *> agentAgentLoop = agentDivision(op);
+    DenseMap<AgentId, Operation *> newAgentLoops = agentDivision(op);
 
     // Second, remove irrelevant Ops
-    for (auto kv : agentAgentLoop) {
+    for (auto kv : newAgentLoops) {
       SmallVector<Operation *> deleteOps;
       AgentId targetId = kv.first;
       Operation *newAgentLoop = kv.second;
@@ -1138,9 +1113,6 @@ void cloneAgentLoopForEachAgentId(SmallVector<Operation *> &agentLoop) {
     }
   }
 }
-
-#define GEN_PASS_DEF_TRITONGPUWARPSPECEXPERIMENTAL
-#include "triton/Dialect/TritonGPU/Transforms/Passes.h.inc"
 
 class TritonGPUWarpSpecExperimentalPass
     : public impl::TritonGPUWarpSpecExperimentalBase<
@@ -1167,20 +1139,28 @@ public:
     reduceChannels(channels, map);
 
     // Prepare phase, getAgentLoop, appendPipelineIdxArgs
-    SmallVector<Operation *> agentLoop = getAgentLoop(funcOp, channels);
-    appendPipelineIdxArgs(agentLoop);
+    SmallVector<Operation *> agentLoops = getAgentLoop(funcOp, channels);
+    appendPipelineIdxArgs(agentLoops);
 
     // Create token, buffer and data transfer between async agents
     DenseMap<Channel *, Value> tokenMap = createToken(map, funcOp, 1);
     DenseMap<Channel *, Value> bufferMap = createBuffer(channels, funcOp, 1);
     buildAsyncComm(map, tokenMap, bufferMap, 1);
+    LLVM_DEBUG({
+      LDBG("\n\nwith SyncOps");
+      funcOp.dump();
+    });
 
     // Clone agentLoop, remove irrelevant blockArgument for {forOp, ifOp}
-    cloneAgentLoopForEachAgentId(agentLoop);
+    cloneAgentLoopForEachAgentId(agentLoops);
+    LLVM_DEBUG({
+      LDBG("\n\nwith Loop Split");
+      funcOp.dump();
+    });
 
     auto ret = SpecializeRegion(funcOp);
     LLVM_DEBUG({
-      LDBG("with IfOps");
+      LDBG("\n\nwith IfOps");
       funcOp.dump();
     });
   }

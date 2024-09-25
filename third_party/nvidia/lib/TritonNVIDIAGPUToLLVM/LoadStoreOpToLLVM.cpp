@@ -1094,8 +1094,9 @@ struct AsyncTMACopyLocalToGlobalOpConversion
       SmallVector<PTXBuilder::Operand *> operands = {
           ptxBuilderTMA.newOperand(boxPred, "b"),
           ptxBuilderTMA.newOperand(adaptor.getDescPtr(), "l")};
-      std::string tmaInst = "@$0 cp.async.bulk.tensor." + std::to_string(rank) +
-                            "d.global.shared::cta.bulk_group [$1, {";
+      std::string tmaInst = "@$0 cp.reduce.async.bulk.tensor." +
+                            std::to_string(rank) +
+                            "d.global.shared::cta.add.bulk_group [$1, {";
       int operandIdx = 2;
       for (int i = 0; i < rank; i++) {
         Value coord = adaptor.getCoord()[rank - i - 1];

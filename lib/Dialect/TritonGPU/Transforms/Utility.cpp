@@ -15,6 +15,7 @@
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "llvm/Support/Debug.h"
+#include <set>
 #define DEBUG_TYPE "ttg-utility"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
@@ -58,11 +59,20 @@ SmallVector<unsigned, 3> mmaVersionToInstrShape(int version,
                      24, 16, 8});
     }
 
+    std::set<unsigned, std::greater<unsigned>> candidateN;
+    // Use smaller n when possible to allow for more fine-grain instruction
+    // scheduling.
+    for (auto n : reverse(validN)) {
+      if (candidateN.count(n / 2) == 0) {
+        candidateN.insert(n);
+      }
+    }
+
     unsigned m = 16;
     unsigned mWarps = std::max<unsigned>(shape[0] / m, 1);
     unsigned nWarps = std::max<unsigned>(numWarps / mWarps, 1);
     unsigned maxN = std::max<unsigned>(shape[1] / nWarps, 8);
-    for (auto n : validN) {
+    for (auto n : candidateN) {
       if (shape[1] % n == 0 && n <= maxN) {
         return {m, n, k};
       }

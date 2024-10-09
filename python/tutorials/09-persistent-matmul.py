@@ -166,25 +166,20 @@ def matmul_kernel_persistent(a_ptr, b_ptr, c_ptr,  #
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
     k_tiles = tl.cdiv(K, BLOCK_SIZE_K)
     num_tiles = num_pid_m * num_pid_n
-
     tiles_per_SM = num_tiles // NUM_SMS
     if start_pid < num_tiles % NUM_SMS:
         tiles_per_SM += 1
-
     tile_id = start_pid - NUM_SMS
     ki = -1
-
     offs_k_for_mask = tl.arange(0, BLOCK_SIZE_K)
-
     num_pid_in_group = GROUP_SIZE_M * num_pid_n
-
     pid_m = 0
     pid_n = 0
-    offs_am = tl.arange(0, BLOCK_SIZE_M)
+    offs_am1 = tl.arange(0, BLOCK_SIZE_M // 2)
+    offs_am2 = tl.arange(BLOCK_SIZE_M // 2, BLOCK_SIZE_M)
     offs_bn = tl.arange(0, BLOCK_SIZE_N)
-
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-
+    accumulator1 = tl.zeros((BLOCK_SIZE_M // 2, BLOCK_SIZE_N), dtype=tl.float32)
+    accumulator2 = tl.zeros((BLOCK_SIZE_M // 2, BLOCK_SIZE_N), dtype=tl.float32)
     for _ in range(0, k_tiles * tiles_per_SM):
         ki = tl.where(ki == k_tiles - 1, 0, ki + 1)
         if ki == 0:
@@ -194,34 +189,44 @@ def matmul_kernel_persistent(a_ptr, b_ptr, c_ptr,  #
             group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
             pid_m = first_pid_m + (tile_id % group_size_m)
             pid_n = (tile_id % num_pid_in_group) // group_size_m
-
             start_m = pid_m * BLOCK_SIZE_M
             start_n = pid_n * BLOCK_SIZE_N
-            offs_am = start_m + tl.arange(0, BLOCK_SIZE_M)
+            offs_am1 = start_m + tl.arange(0, BLOCK_SIZE_M // 2)
+            offs_am2 = start_m + tl.arange(BLOCK_SIZE_M // 2, BLOCK_SIZE_M)
             offs_bn = start_n + tl.arange(0, BLOCK_SIZE_N)
-            offs_am = tl.where(offs_am < M, offs_am, 0)
+            offs_am1 = tl.where(offs_am1 < M, offs_am1, 0)
+            offs_am2 = tl.where(offs_am2 < M, offs_am2, 0)
             offs_bn = tl.where(offs_bn < N, offs_bn, 0)
-            offs_am = tl.max_contiguous(tl.multiple_of(offs_am, BLOCK_SIZE_M), BLOCK_SIZE_M)
+            offs_am1 = tl.max_contiguous(tl.multiple_of(offs_am1, BLOCK_SIZE_M // 2), BLOCK_SIZE_M // 2)
+            offs_am2 = tl.max_contiguous(tl.multiple_of(offs_am2, BLOCK_SIZE_M // 2), BLOCK_SIZE_M // 2)
             offs_bn = tl.max_contiguous(tl.multiple_of(offs_bn, BLOCK_SIZE_N), BLOCK_SIZE_N)
         offs_k = ki * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
-        a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+        a_ptrs1 = a_ptr + (offs_am1[:, None] * stride_am + offs_k[None, :] * stride_ak)
+        a_ptrs2 = a_ptr + (offs_am2[:, None] * stride_am + offs_k[None, :] * stride_ak)
         b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
-
-        a = tl.load(a_ptrs, mask=offs_k_for_mask[None, :] < K - ki * BLOCK_SIZE_K, other=0.0)
+        a1 = tl.load(a_ptrs1, mask=offs_k_for_mask[None, :] < K - ki * BLOCK_SIZE_K, other=0.0)
+        a2 = tl.load(a_ptrs2, mask=offs_k_for_mask[None, :] < K - ki * BLOCK_SIZE_K, other=0.0)
         b = tl.load(b_ptrs, mask=offs_k_for_mask[:, None] < K - ki * BLOCK_SIZE_K, other=0.0)
-        accumulator = tl.dot(a, b, accumulator)
-
+        accumulator1 = tl.dot(a1, b, accumulator1)
+        accumulator2 = tl.dot(a2, b, accumulator2)
         if ki == k_tiles - 1:
-            offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            offs_cm1 = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M // 2)
+            offs_cm2 = pid_m * BLOCK_SIZE_M + tl.arange(BLOCK_SIZE_M // 2, BLOCK_SIZE_M)
             offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-            c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-            c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+            c_ptrs1 = c_ptr + stride_cm * offs_cm1[:, None] + stride_cn * offs_cn[None, :]
+            c_ptrs2 = c_ptr + stride_cm * offs_cm2[:, None] + stride_cn * offs_cn[None, :]
+            c_mask1 = (offs_cm1[:, None] < M) & (offs_cn[None, :] < N)
+            c_mask2 = (offs_cm2[:, None] < M) & (offs_cn[None, :] < N)
             if (c_ptr.dtype.element_ty == tl.float8e4nv):
-                c = accumulator.to(tl.float8e4nv)
+                c1 = accumulator1.to(tl.float8e4nv)
+                c2 = accumulator2.to(tl.float8e4nv)
             else:
-                c = accumulator.to(tl.float16)
-            tl.store(c_ptrs, c, mask=c_mask)
-            accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+                c1 = accumulator1.to(tl.float16)
+                c2 = accumulator2.to(tl.float16)
+            tl.store(c_ptrs1, c1, mask=c_mask1)
+            tl.store(c_ptrs2, c2, mask=c_mask2)
+            accumulator1 = tl.zeros((BLOCK_SIZE_M // 2, BLOCK_SIZE_N), dtype=tl.float32)
+            accumulator2 = tl.zeros((BLOCK_SIZE_M // 2, BLOCK_SIZE_N), dtype=tl.float32)
 
 
 def matmul_persistent(a, b):
